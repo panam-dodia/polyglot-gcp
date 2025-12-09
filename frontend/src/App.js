@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import LanguageSelector from './components/LanguageSelector';
-import TranslationInterface from './components/TranslationInterface';
+import RoomSetup from './components/RoomSetup';
+import RoomInterface from './components/RoomInterface';
 
 const AppContainer = styled.div`
   min-height: 100vh;
@@ -21,32 +21,27 @@ const Title = styled.h1`
 `;
 
 function App() {
-  const [sourceLanguage, setSourceLanguage] = useState('');
-  const [targetLanguage, setTargetLanguage] = useState('');
-  const [sessionStarted, setSessionStarted] = useState(false);
+  const [roomData, setRoomData] = useState(null);
 
-  const handleStartSession = (source, target) => {
-    setSourceLanguage(source);
-    setTargetLanguage(target);
-    setSessionStarted(true);
+  const handleJoinRoom = (roomId, userId, language, mode, name) => {
+    setRoomData({ roomId, userId, language, mode, name });
   };
-
-  const handleEndSession = () => {
-    setSessionStarted(false);
-    setSourceLanguage('');
-    setTargetLanguage('');
+  const handleLeaveRoom = () => {
+    setRoomData(null);
   };
 
   return (
     <AppContainer>
-      <Title>🌍 Polyglot</Title>
-      {!sessionStarted ? (
-        <LanguageSelector onStartSession={handleStartSession} />
+      <Title>🌍 Polyglot - Multilingual Rooms</Title>
+      {!roomData ? (
+        <RoomSetup onJoinRoom={handleJoinRoom} />
       ) : (
-        <TranslationInterface
-          sourceLanguage={sourceLanguage}
-          targetLanguage={targetLanguage}
-          onEndSession={handleEndSession}
+        <RoomInterface
+          initialRoomId={roomData.roomId}
+          language={roomData.language}
+          mode={roomData.mode}
+          name={roomData.name}
+          onLeaveRoom={handleLeaveRoom}
         />
       )}
     </AppContainer>
