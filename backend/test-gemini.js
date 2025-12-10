@@ -1,16 +1,20 @@
 require('dotenv').config();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { ElevenLabsClient } = require('elevenlabs');
 
-async function test() {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+async function listVoices() {
+  const elevenlabs = new ElevenLabsClient({
+    apiKey: process.env.ELEVENLABS_API_KEY
+  });
   
-  console.log('Testing gemini-2.0-flash...');
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-  const result = await model.generateContent('Translate "hold your horses" to Hindi naturally and colloquially');
-  console.log('✅ SUCCESS!');
-  console.log('Translation:', result.response.text());
+  try {
+    const voices = await elevenlabs.voices.getAll();
+    console.log('Available voices:');
+    voices.voices.forEach(voice => {
+      console.log(`- ${voice.name} (${voice.labels?.gender || 'unknown'}) - ID: ${voice.voice_id}`);
+    });
+  } catch (error) {
+    console.error('Error:', error.message);
+  }
 }
 
-test().catch(err => {
-  console.error('❌ FAILED:', err.message);
-});
+listVoices();

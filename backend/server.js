@@ -29,7 +29,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 // Store rooms and participants
-const rooms = new Map(); // roomId -> { participants: Map(userId -> {ws, language, recognizeStream}) }
+const rooms = new Map(); // roomId -> { participants: Map(...), conversationHistory: [] }
 
 // Generate random room ID
 function generateRoomId() {
@@ -61,7 +61,8 @@ wss.on('connection', (ws) => {
             userId = Date.now().toString();
             
             rooms.set(roomId, {
-              participants: new Map()
+              participants: new Map(),
+              conversationHistory: []
             });
             
             rooms.get(roomId).participants.set(userId, {
@@ -176,6 +177,55 @@ wss.on('connection', (ws) => {
             }
             console.log(`User ${userId} stopped speaking`);
           }
+
+          if (data.type === 'agent_query_start') {
+            // Start recording for agent query
+            if (!currentRoom || !userId) return;
+            
+            const participant = rooms.get(currentRoom).participants.get(userId);
+            
+            console.log(`User ${userId} asking agent in ${participant.language}`);
+            
+            // Create streaming recognition request
+            const request = {
+              config: {
+                encoding: 'WEBM_OPUS',
+                sampleRateHertz: 48000,
+                languageCode: data.language,
+                enableAutomaticPunctuation: true,
+              },
+              interimResults: false,
+            };
+            
+            recognizeStream = speechClient
+              .streamingRecognize(request)
+              .on('error', (error) => {
+                console.error('Agent speech recognition error:', error);
+                ws.send(JSON.stringify({ type: 'error', message: error.message }));
+              })
+              .on('data', async (response) => {
+                const result = response.results[0];
+                if (result && result.alternatives[0] && result.isFinal) {
+                  const question = result.alternatives[0].transcript;
+                  
+                  console.log(`Agent query: ${question}`);
+                  
+                  // Process agent query
+                  await handleAgentQuery(currentRoom, userId, question, participant.language);
+                }
+              });
+            
+            participant.recognizeStream = recognizeStream;
+            ws.send(JSON.stringify({ type: 'ready' }));
+          }
+
+          if (data.type === 'agent_query_stop') {
+            if (recognizeStream) {
+              recognizeStream.end();
+              recognizeStream = null;
+            }
+            console.log(`User ${userId} stopped agent query`);
+          }
           
           return;
           
@@ -269,6 +319,17 @@ Rules:
         console.log(`Gemini translated to ${targetLangName}: ${translatedText}`);
       }
       
+      // Log to conversation history (ADD THIS)
+      if (participantId === Array.from(room.participants.keys())[0]) {
+        // Only log once per message
+        room.conversationHistory.push({
+          timestamp: Date.now(),
+          speaker: room.participants.get(speakerId).name,
+          language: sourceLangName,
+          text: text
+        });
+      }
+
       // Send translation to participant
       participant.ws.send(JSON.stringify({
         type: 'translation',
@@ -310,7 +371,10 @@ async function generateSpeechForParticipant(participant, text) {
   try {
     console.log('Generating speech:', text);
     
-    const audio = await elevenlabs.textToSpeech.convert("pNInz6obpgDQGcFmaJgB", {
+    // Use single voice for everyone
+    const voiceId = 'pNInz6obpgDQGcFmaJgB';
+    
+    const audio = await elevenlabs.textToSpeech.convert(voiceId, {
       text: text,
       model_id: "eleven_multilingual_v2",
       voice_settings: {
@@ -335,6 +399,56 @@ async function generateSpeechForParticipant(participant, text) {
     
   } catch (error) {
     console.error('Speech synthesis error:', error);
+  }
+}
+
+// Handle agent queries about conversation
+async function handleAgentQuery(roomId, userId, question, userLanguage) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  
+  const participant = room.participants.get(userId);
+  
+  try {
+    console.log(`Processing agent query: "${question}"`);
+    
+    // Build conversation context
+    const conversationContext = room.conversationHistory
+      .map(entry => `${entry.speaker} (${entry.language}): ${entry.text}`)
+      .join('\n');
+    
+    // Create prompt for agent
+    const prompt = `You are a helpful conversation assistant. You have access to the conversation history below.
+
+CONVERSATION HISTORY:
+${conversationContext}
+
+USER QUESTION: ${question}
+
+Provide a helpful, concise answer to the user's question based on the conversation history. If the conversation history is empty or doesn't contain relevant information, politely say so.
+
+Answer in ${getLanguageName(userLanguage)} language.`;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response.text().trim();
+    
+    console.log(`Agent response: ${response}`);
+    
+    // Send response back to user
+    participant.ws.send(JSON.stringify({
+      type: 'agent_response',
+      response: response
+    }));
+    
+    // Generate speech for the response
+    await generateSpeechForParticipant(participant, response);
+    
+  } catch (error) {
+    console.error(`Error processing agent query:`, error);
+    participant.ws.send(JSON.stringify({
+      type: 'error',
+      message: 'Could not process your question'
+    }));
   }
 }
 

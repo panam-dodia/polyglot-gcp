@@ -149,6 +149,8 @@ function RoomInterface({ initialRoomId, language, mode, name, onLeaveRoom }) {
   const [error, setError] = useState('');
   const [roomId, setRoomId] = useState(initialRoomId);
   const [userId, setUserId] = useState(null);
+  const [agentMode, setAgentMode] = useState(false);
+  const [agentListening, setAgentListening] = useState(false);
   
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -166,14 +168,14 @@ function RoomInterface({ initialRoomId, language, mode, name, onLeaveRoom }) {
         ws.send(JSON.stringify({
           type: 'create_room',
           language: language,
-          name: name
+          name: name,
         }));
       } else {
         ws.send(JSON.stringify({
           type: 'join_room',
           roomId: initialRoomId,
           language: language,
-          name: name
+          name: name,
         }));
       }
     };
@@ -230,6 +232,15 @@ function RoomInterface({ initialRoomId, language, mode, name, onLeaveRoom }) {
       if (data.type === 'error') {
         setError(data.message);
         setStatus('Error occurred');
+      }
+
+      if (data.type === 'agent_response') {
+        setTranscripts(prev => [...prev, {
+          speaker: 'Agent',
+          text: data.response,
+          timestamp: Date.now()
+        }]);
+        setStatus('Ready');
       }
     };
 
@@ -305,6 +316,54 @@ function RoomInterface({ initialRoomId, language, mode, name, onLeaveRoom }) {
     audio.play();
   };
 
+  const startAgentListening = async () => {
+    try {
+      console.log('Starting agent mode...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+      
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(event.data);
+        }
+      };
+
+      mediaRecorder.start(100);
+      
+      // Send agent query start message
+      wsRef.current.send(JSON.stringify({
+        type: 'agent_query_start',
+        language: language
+      }));
+
+      setAgentMode(true);
+      setAgentListening(true);
+      setStatus('Ask your question...');
+      
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+      setError('Microphone access denied');
+    }
+  };
+
+  const stopAgentListening = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      
+      wsRef.current.send(JSON.stringify({ type: 'agent_query_stop' }));
+      
+      setAgentMode(false);
+      setAgentListening(false);
+      setStatus('Processing your question...');
+    }
+  };
+
   const getLanguageName = (code) => {
     const languages = {
       'en-US': 'English',
@@ -361,9 +420,30 @@ function RoomInterface({ initialRoomId, language, mode, name, onLeaveRoom }) {
 
       <RecordButton
         $isRecording={recording}
-        onClick={recording ? stopRecording : startRecording}
+        onClick={() => {
+          if (recording) {
+            stopRecording();
+          } else {
+            startRecording();
+          }
+        }}
+        style={{ marginBottom: '15px' }}
       >
-        {recording ? '🛑 Stop Speaking' : '🎤 Start Speaking'}
+        {recording ? '⏹️ Stop Speaking' : '🎤 Start Speaking'}
+      </RecordButton>
+
+      <RecordButton
+        $isRecording={agentMode}
+        onClick={() => {
+          if (agentMode) {
+            stopAgentListening();
+          } else {
+            startAgentListening();
+          }
+        }}
+        style={{ marginBottom: '15px', background: agentMode ? '#9b59b6' : '#3498db' }}
+      >
+        {agentMode ? '🤖 Stop Agent' : '🤖 Ask Agent'}
       </RecordButton>
 
       <Status $error={error}>
