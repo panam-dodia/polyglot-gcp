@@ -2,10 +2,11 @@ FROM node:18
 
 WORKDIR /app
 
-COPY package*.json ./
+# Copy backend files
+COPY backend/package*.json backend/package-lock.json ./
 RUN npm install
 
-COPY . .
+COPY backend/ ./
 
 EXPOSE 8080
 
