@@ -157,7 +157,7 @@ function RoomInterface({ initialRoomId, language, mode, name, onLeaveRoom }) {
 
   useEffect(() => {
     // Connect to WebSocket
-    const ws = new WebSocket('ws://localhost:8080');
+    const ws = new WebSocket('wss://polyglot-gcp-253723476028.us-central1.run.app');
     wsRef.current = ws;
 
     ws.onopen = () => {
