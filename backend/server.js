@@ -226,6 +226,106 @@ wss.on('connection', (ws) => {
             }
             console.log(`User ${userId} stopped agent query`);
           }
+
+          if (data.type === 'personal_mode_start') {
+            // Personal mode translation
+            console.log(`Personal mode started: ${data.sourceLanguage} -> ${data.targetLanguage}`);
+            
+            const request = {
+              config: {
+                encoding: 'WEBM_OPUS',
+                sampleRateHertz: 48000,
+                languageCode: data.sourceLanguage,
+                enableAutomaticPunctuation: true,
+              },
+              interimResults: true,
+            };
+            
+            recognizeStream = speechClient
+              .streamingRecognize(request)
+              .on('error', (error) => {
+                console.error('Personal mode recognition error:', error);
+              })
+              .on('data', async (response) => {
+                const result = response.results[0];
+                if (result && result.alternatives[0]) {
+                  const transcript = result.alternatives[0].transcript;
+                  const isFinal = result.isFinal;
+                  
+                  // Send transcript
+                  ws.send(JSON.stringify({
+                    type: 'personal_transcript',
+                    text: transcript
+                  }));
+                  
+                  // If final, translate
+                  if (isFinal) {
+                    try {
+                      const sourceLang = data.sourceLanguage.split('-')[0];
+                      const targetLang = data.targetLanguage.split('-')[0];
+                      
+                      if (sourceLang !== targetLang) {
+                        const prompt = `Translate this phrase naturally and colloquially:
+          "${transcript}"
+
+          From: ${getLanguageName(data.sourceLanguage)}
+          To: ${getLanguageName(data.targetLanguage)}
+
+          ONE LINE ONLY - just the translation.`;
+
+                        const result = await model.generateContent(prompt);
+                        const translatedText = result.response.text().trim();
+                        
+                        ws.send(JSON.stringify({
+                          type: 'personal_translation',
+                          translated: translatedText
+                        }));
+
+                        // Generate audio for personal mode
+                        try {
+                          const audio = await elevenlabs.textToSpeech.convert('pNInz6obpgDQGcFmaJgB', {
+                            text: translatedText,
+                            model_id: "eleven_multilingual_v2",
+                            voice_settings: {
+                              speed: 0.85,
+                              stability: 0.5,
+                              similarity_boost: 0.75
+                            }
+                          });
+                          
+                          const chunks = [];
+                          for await (const chunk of audio) {
+                            chunks.push(chunk);
+                          }
+                          const audioBuffer = Buffer.concat(chunks);
+                          
+                          ws.send(JSON.stringify({
+                            type: 'personal_audio',
+                            audio: audioBuffer.toString('base64')
+                          }));
+                          
+                          console.log('Personal mode audio sent');
+                        } catch (error) {
+                          console.error('Personal mode audio error:', error);
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Personal mode translation error:', error);
+                    }
+                  }
+                }
+              });
+            
+            ws.send(JSON.stringify({ type: 'ready' }));
+          }
+
+          if (data.type === 'personal_mode_stop') {
+            if (recognizeStream) {
+              recognizeStream.end();
+              recognizeStream = null;
+            }
+            console.log('Personal mode stopped');
+          }
           
           return;
           

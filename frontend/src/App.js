@@ -22,20 +22,23 @@ const Title = styled.h1`
 
 function App() {
   const [roomData, setRoomData] = useState(null);
+  const [mode, setMode] = useState('home'); // 'home' or 'room'
 
   const handleJoinRoom = (roomId, userId, language, mode, name) => {
     setRoomData({ roomId, userId, language, mode, name });
+    setMode('room');
   };
+
   const handleLeaveRoom = () => {
     setRoomData(null);
+    setMode('home');
   };
 
   return (
     <AppContainer>
       <Title>🌍 Polyglot - Multilingual Rooms</Title>
-      {!roomData ? (
-        <RoomSetup onJoinRoom={handleJoinRoom} />
-      ) : (
+      {mode === 'home' && <RoomSetup onJoinRoom={handleJoinRoom} />}
+      {mode === 'room' && (
         <RoomInterface
           initialRoomId={roomData.roomId}
           language={roomData.language}
