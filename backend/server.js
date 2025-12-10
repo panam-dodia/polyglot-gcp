@@ -6,7 +6,7 @@ const cors = require('cors');
 const speech = require('@google-cloud/speech');
 const { Translate } = require('@google-cloud/translate').v2;
 const { ElevenLabsClient } = require('elevenlabs');
-const { VertexAI } = require('@google-cloud/vertexai')
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 app.use(cors());
@@ -24,14 +24,9 @@ const elevenlabs = new ElevenLabsClient({
   apiKey: process.env.ELEVENLABS_API_KEY
 });
 
-// Initialize Vertex AI for Gemini
-const vertexAI = new VertexAI({
-  project: process.env.GOOGLE_CLOUD_PROJECT,
-  location: 'us-central1'
-});
-const model = vertexAI.getGenerativeModel({
-  model: 'gemini-1.5-flash'
-});
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 // Store rooms and participants
 const rooms = new Map(); // roomId -> { participants: Map(userId -> {ws, language, recognizeStream}) }
@@ -259,24 +254,17 @@ async function translateAndBroadcast(roomId, speakerId, text, sourceLanguage) {
       // Only translate if languages are different
       if (sourceLanguage.split('-')[0] !== participant.language.split('-')[0]) {
         // Use Gemini for natural, conversational translation
-        const prompt = `You are a professional translator specializing in natural, conversational language.
-
-Translate the following ${sourceLangName} text to ${targetLangName}:
+        const prompt = `Translate this ${sourceLangName} phrase to ${targetLangName} in a natural, colloquial way as people actually speak:
 "${text}"
 
-IMPORTANT RULES:
-- Use natural, colloquial expressions, not literal word-for-word translation
-- Match the casual/formal tone of the original
-- Use slang and everyday expressions when appropriate
-- Keep it conversational and natural sounding
-- If it's a greeting, use common greetings in ${targetLangName}
-- If it's an expression (like "that works for me"), use the natural equivalent
-
-Provide ONLY the translation, no explanations or notes.`;
+Rules:
+- Use everyday slang and expressions
+- Match the casual/formal tone
+- Sound natural, not literal
+- ONE LINE ONLY - just the translation, nothing else`;
 
         const result = await model.generateContent(prompt);
-        const response = result.response;
-        translatedText = response.candidates[0].content.parts[0].text.trim();
+        translatedText = result.response.text().trim();
         
         console.log(`Gemini translated to ${targetLangName}: ${translatedText}`);
       }
