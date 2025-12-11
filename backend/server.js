@@ -28,6 +28,12 @@ const elevenlabs = new ElevenLabsClient({
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
+// DEBUG: Check environment variables
+console.log('=== ENVIRONMENT CHECK ===');
+console.log('ELEVENLABS_API_KEY:', process.env.ELEVENLABS_API_KEY ? process.env.ELEVENLABS_API_KEY.substring(0, 15) + '...' : 'NOT SET');
+console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 15) + '...' : 'NOT SET');
+console.log('========================');
+
 // Store rooms and participants
 const rooms = new Map(); // roomId -> { participants: Map(...), conversationHistory: [] }
 
