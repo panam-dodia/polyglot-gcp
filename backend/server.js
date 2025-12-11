@@ -5,7 +5,7 @@ const WebSocket = require('ws');
 const cors = require('cors');
 const speech = require('@google-cloud/speech');
 const { Translate } = require('@google-cloud/translate').v2;
-const { ElevenLabs } = require('@elevenlabs/elevenlabs-js');
+const { ElevenLabsClient } = require('@elevenlabs/elevenlabs-js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
@@ -20,7 +20,7 @@ const speechClient = new speech.SpeechClient();
 const translateClient = new Translate();
 
 // Initialize ElevenLabs client
-const elevenlabs = new ElevenLabs({
+const elevenlabs = new ElevenLabsClient({
   apiKey: process.env.ELEVENLABS_API_KEY
 });
 
